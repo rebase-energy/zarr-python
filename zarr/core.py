@@ -1679,7 +1679,7 @@ class Array:
         fields,
         out_selection,
         partial_read_decode=False,
-    ):
+    ):        
         """Take binary data from storage and fill output array"""
         if (out_is_ndarray and
                 not fields and
@@ -1832,6 +1832,7 @@ class Array:
         else:
             partial_read_decode = False
             cdatas = self.chunk_store.getitems(ckeys, on_error="omit")
+        
         for ckey, chunk_select, out_select in zip(ckeys, lchunk_selection, lout_selection):
             if ckey in cdatas:
                 self._process_chunk(
@@ -2171,7 +2172,8 @@ class Array:
 
     def __getstate__(self):
         return (self._store, self._path, self._read_only, self._chunk_store,
-                self._synchronizer, self._cache_metadata, self._attrs.cache)
+                self._synchronizer, self._cache_metadata, self._attrs.cache,
+                self._partial_decompress)
 
     def __setstate__(self, state):
         self.__init__(*state)
