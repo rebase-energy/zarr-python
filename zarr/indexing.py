@@ -831,12 +831,20 @@ def pop_fields(selection):
 
 def make_slice_selection(selection):
     ls = []
-    for dim_selection in selection:
+    for dim_ix, dim_selection in enumerate(selection):
         if is_integer(dim_selection):
             ls.append(slice(dim_selection, dim_selection + 1, 1))
         elif isinstance(dim_selection, np.ndarray):
-            if len(dim_selection) == 1:
-                ls.append(slice(dim_selection[0], dim_selection[0] + 1, 1))
+            dim_selection_flat = dim_selection.flatten()
+            if len(dim_selection_flat) > 1:
+                if all(dim_selection_flat == dim_selection_flat[0]):
+                    ls.append(slice(dim_selection_flat[0], dim_selection_flat[0] + 1, 1))
+                elif all(np.diff(dim_selection_flat) == 1):
+                    ls.append(slice(dim_selection_flat[0], dim_selection_flat[-1] + 1, 1))
+                else:
+                    raise ArrayIndexError()
+            elif len(dim_selection_flat) == 1:
+                ls.append(slice(dim_selection_flat[0], dim_selection_flat[0] + 1, 1))
             else:
                 raise ArrayIndexError()
         else:

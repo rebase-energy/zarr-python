@@ -541,12 +541,14 @@ nolock = NoLock()
 class PartialReadBuffer:
     def __init__(self, store_key, chunk_store):
         self.chunk_store = chunk_store
-        # is it fsstore or an actual fsspec map object
-        assert hasattr(self.chunk_store, "map")
-        self.map = self.chunk_store.map
         self.fs = self.chunk_store.fs
         self.store_key = store_key
-        self.key_path = self.map._key_to_str(store_key)
+        if hasattr(self.chunk_store, "_key_to_str"):
+            self.key_path = self.chunk_store._key_to_str(store_key)
+        elif hasattr(self.chunk_store, "map"):
+            self.key_path = self.chunk_store.map._key_to_str(store_key)
+        else:
+            self.key_path = store_key
         self.buff = None
         self.nblocks = None
         self.start_points = None
@@ -573,6 +575,7 @@ class PartialReadBuffer:
         start_points_buffer = self.fs.read_block(
             self.key_path, 16, int(self.nblocks * 4)
         )
+        print(f"prepare_chunk: {self.key_path}: {(nbytes, self.cbytes, blocksize)}, start_points_buffer: {len(start_points_buffer)}")
         self.start_points = np.frombuffer(
             start_points_buffer, count=self.nblocks, dtype=np.int32
         )
@@ -600,6 +603,7 @@ class PartialReadBuffer:
                 else:
                     stop_byte = self.start_points[self.start_points > start_byte].min()
                 length = stop_byte - start_byte
+                print(f"Read {self.key_path}: from {start_byte}, for {length}")
                 data_buff = self.fs.read_block(self.key_path, start_byte, length)
                 self.buff[start_byte:stop_byte] = data_buff
                 self.read_blocks.add(start_block)
