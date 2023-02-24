@@ -41,6 +41,7 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
+    PartialChunkReadError,
 )
 
 
@@ -1679,7 +1680,7 @@ class Array:
         fields,
         out_selection,
         partial_read_decode=False,
-    ):        
+    ):
         """Take binary data from storage and fill output array"""
         if (out_is_ndarray and
                 not fields and
@@ -1722,7 +1723,7 @@ class Array:
                 for start, nitems, partial_out_selection in index_selection:
                     expected_shape = [
                         len(
-                            range(*partial_out_selection[i].indices(self.chunks[0] + 1))
+                            range(*partial_out_selection[i].indices(self.chunks[i] + 1))
                         )
                         if i < len(partial_out_selection)
                         else dim
@@ -1738,7 +1739,7 @@ class Array:
                     tmp[partial_out_selection] = chunk_partial
                 out[out_selection] = tmp[chunk_selection]
                 return
-        except ArrayIndexError:
+        except (ArrayIndexError, PartialChunkReadError):
             cdata = cdata.read_full()
         chunk = self._decode_chunk(cdata)
 

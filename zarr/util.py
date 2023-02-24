@@ -5,6 +5,7 @@ import numbers
 from textwrap import TextWrapper
 import mmap
 import time
+import warnings
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
@@ -537,9 +538,11 @@ class NoLock(object):
 
 nolock = NoLock()
 
+class PartialChunkReadError(Exception):
+    pass
 
 class PartialReadBuffer:
-    def __init__(self, store_key, chunk_store):
+    def __init__(self, store_key, chunk_store, readahead_nblocks=4096):
         self.chunk_store = chunk_store
         self.fs = self.chunk_store.fs
         self.store_key = store_key
@@ -554,11 +557,17 @@ class PartialReadBuffer:
         self.start_points = None
         self.n_per_block = None
         self.start_points_max = None
+        self.readahead_nblocks = readahead_nblocks
         self.read_blocks = set()
 
     def prepare_chunk(self):
         assert self.buff is None
-        header = self.fs.read_block(self.key_path, 0, 16)
+        if self.readahead_nblocks is not None:
+            readahead_buff = self.fs.read_block(self.key_path, 0, 16 + int(self.readahead_nblocks * 4))
+            header = readahead_buff[0:16]
+        else:
+            readahead_buff = None
+            header = self.fs.read_block(self.key_path, 0, 16)
         nbytes, self.cbytes, blocksize = cbuffer_sizes(header)
         typesize, _shuffle, _memcpyd = cbuffer_metainfo(header)
         self.buff = mmap.mmap(-1, self.cbytes)
@@ -572,13 +581,20 @@ class PartialReadBuffer:
         if self.nblocks == 1:
             self.buff = self.read_full()
             return
-        start_points_buffer = self.fs.read_block(
-            self.key_path, 16, int(self.nblocks * 4)
-        )
+        nblocks_pointers_totalsize = int(self.nblocks * 4)
+        if readahead_buff is not None and len(readahead_buff)>=16+nblocks_pointers_totalsize:
+            start_points_buffer = readahead_buff[16:16+nblocks_pointers_totalsize]
+        else:
+            start_points_buffer = self.fs.read_block(
+                self.key_path, 16, nblocks_pointers_totalsize
+            )
         print(f"prepare_chunk: {self.key_path}: {(nbytes, self.cbytes, blocksize)}, start_points_buffer: {len(start_points_buffer)}")
         self.start_points = np.frombuffer(
             start_points_buffer, count=self.nblocks, dtype=np.int32
         )
+        if min(self.start_points)<0 or max(self.start_points) > self.cbytes:
+            warnings.warn(f"Found bad chunk {self.key_path}: min block start: {min(self.start_points)} max block start: {max(self.start_points)}.")
+            raise PartialChunkReadError()
         self.start_points_max = self.start_points.max()
         self.buff[16: (16 + (self.nblocks * 4))] = start_points_buffer
         self.n_per_block = blocksize / typesize
