@@ -153,7 +153,6 @@ class Array:
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
-        self._partial_decompress = partial_decompress
 
         # initialize metadata
         self._load_metadata()
@@ -169,6 +168,8 @@ class Array:
         # initialize indexing helpers
         self._oindex = OIndex(self)
         self._vindex = VIndex(self)
+
+        self._partial_decompress = partial_decompress(self) if callable(partial_decompress) else partial_decompress
 
     def _load_metadata(self):
         """(Re)load metadata from store."""

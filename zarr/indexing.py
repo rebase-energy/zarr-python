@@ -834,7 +834,9 @@ def make_slice_selection(selection):
     for dim_ix, dim_selection in enumerate(selection):
         if is_integer(dim_selection):
             ls.append(slice(dim_selection, dim_selection + 1, 1))
-        elif isinstance(dim_selection, np.ndarray):
+        elif isinstance(dim_selection, np.ndarray) or isinstance(dim_selection, list):
+            if isinstance(dim_selection, list):
+                dim_selection = np.asanyarray(dim_selection, dtype=np.integer)
             dim_selection_flat = dim_selection.flatten()
             if len(dim_selection_flat) > 1:
                 if all(dim_selection_flat == dim_selection_flat[0]):
@@ -842,7 +844,7 @@ def make_slice_selection(selection):
                 elif all(np.diff(dim_selection_flat) == 1):
                     ls.append(slice(dim_selection_flat[0], dim_selection_flat[-1] + 1, 1))
                 else:
-                    raise ArrayIndexError()
+                    ls.append(slice(min(dim_selection_flat), max(dim_selection_flat) + 1, 1))
             elif len(dim_selection_flat) == 1:
                 ls.append(slice(dim_selection_flat[0], dim_selection_flat[0] + 1, 1))
             else:
