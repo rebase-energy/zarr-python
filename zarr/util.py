@@ -535,6 +535,23 @@ class NoLock(object):
     def __exit__(self, *args):
         pass
 
+def disjoint_intervals(intervals):
+    if len(intervals) == 1:
+        return intervals
+    disj_interv = []
+    for interv in intervals:
+        i_start, i_end = interv
+        intersected_interval = False
+        for dj_ix, (dj_start, dj_end) in enumerate(disj_interv):
+            if i_start<=dj_end and dj_start<=i_end:
+                disj_interv[dj_ix] = [min(i_start, dj_start), max(i_end, dj_end)]
+                intersected_interval = True
+        if not intersected_interval:
+            disj_interv.append(interv)
+    if len(disj_interv) < len(intervals):
+        return disjoint_intervals(disj_interv)
+    else:
+        return disj_interv
 
 nolock = NoLock()
 
@@ -599,6 +616,43 @@ class PartialReadBuffer:
         self.buff[16: (16 + (self.nblocks * 4))] = start_points_buffer
         self.n_per_block = blocksize / typesize
 
+    def _get_block_bytes_range(self, block):
+        if block > self.nblocks:
+            raise ValueError(f"Non-existing block {block}. Max {self.nblocks}")
+
+        start_byte = self.start_points[block]
+        stop_byte = self.start_points[block+1] if block<self.nblocks-1 else self.cbytes
+        return start_byte, stop_byte
+
+    def read_parts(self, start_arr, nitems_arr):
+        assert self.buff is not None
+        if self.nblocks == 1:
+            return
+        required_ranges = []
+        for start, nitems in zip(start_arr, nitems_arr):
+            start_block = int(start / self.n_per_block)
+            start_byte, last_byte = self._get_block_bytes_range(start_block)
+            if start_block not in self.read_blocks:
+                self.read_blocks.add(start_block)
+            initial_read_items = ((start_block + 1) * self.n_per_block) - start
+            if nitems > initial_read_items:
+                remaining_nitems = nitems - initial_read_items
+                remaining_blocks = int(np.ceil(remaining_nitems / self.n_per_block))
+                _, last_block_end = self._get_block_bytes_range(start_block+remaining_blocks)
+                last_byte = last_block_end
+                for block in range(start_block, start_block+remaining_blocks+1):
+                    if block not in self.read_blocks:
+                        self.read_blocks.add(block)
+            required_ranges.append((start_byte, last_byte))
+
+        disjoint_ranges = disjoint_intervals(required_ranges)
+        for start_byte, stop_byte in disjoint_ranges:
+            length = stop_byte - start_byte
+            print(f"Read {self.key_path} range: from {start_byte} to {stop_byte}, len {length}: {np.round(length/self.cbytes*100, 2)}%")
+            data_buff = self.fs.read_block(self.key_path, start_byte, length)
+            self.buff[start_byte:stop_byte] = data_buff
+
+
     def read_part(self, start, nitems):
         assert self.buff is not None
         if self.nblocks == 1:
@@ -619,7 +673,7 @@ class PartialReadBuffer:
                 else:
                     stop_byte = self.start_points[self.start_points > start_byte].min()
                 length = stop_byte - start_byte
-                print(f"Read {self.key_path}: from {start_byte}, for {length}")
+                print(f"Need {nitems} from {start}: read {self.key_path}: from {start_byte}, for {length}")
                 data_buff = self.fs.read_block(self.key_path, start_byte, length)
                 self.buff[start_byte:stop_byte] = data_buff
                 self.read_blocks.add(start_block)

@@ -1721,6 +1721,14 @@ class Array:
                 # size of chunk
                 tmp = np.empty(self._chunks, dtype=self.dtype)
                 index_selection = PartialChunkIterator(chunk_selection, self.chunks)
+
+                start_arr = []
+                nitems_arr = []
+                for start, nitems, _ in index_selection:
+                    start_arr.append(start)
+                    nitems_arr.append(nitems)
+                cdata.read_parts(start_arr, nitems_arr)
+
                 for start, nitems, partial_out_selection in index_selection:
                     expected_shape = [
                         len(
@@ -1730,7 +1738,6 @@ class Array:
                         else dim
                         for i, dim in enumerate(self.chunks)
                     ]
-                    cdata.read_part(start, nitems)
                     chunk_partial = self._decode_chunk(
                         cdata.buff,
                         start=start,
