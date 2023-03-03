@@ -638,11 +638,11 @@ class PartialReadBuffer:
             if nitems > initial_read_items:
                 remaining_nitems = nitems - initial_read_items
                 remaining_blocks = int(np.ceil(remaining_nitems / self.n_per_block))
-                _, last_block_end = self._get_block_bytes_range(start_block+remaining_blocks)
+                last_block = start_block+1+remaining_blocks
+                _, last_block_end = self._get_block_bytes_range(last_block)
                 last_byte = last_block_end
-                for block in range(start_block, start_block+remaining_blocks+1):
-                    if block not in self.read_blocks:
-                        self.read_blocks.add(block)
+                # start_block has already been read so we start from the next one
+                self.read_blocks |= set(range(start_block+1, last_block+1))
             required_ranges.append((start_byte, last_byte))
 
         disjoint_ranges = disjoint_intervals(required_ranges)
