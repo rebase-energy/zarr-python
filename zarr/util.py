@@ -617,7 +617,7 @@ class PartialReadBuffer:
         self.n_per_block = blocksize / typesize
 
     def _get_block_bytes_range(self, block):
-        if block > self.nblocks:
+        if block > self.nblocks-1:
             raise ValueError(f"Non-existing block {block}. Max {self.nblocks}")
 
         start_byte = self.start_points[block]
@@ -634,11 +634,12 @@ class PartialReadBuffer:
             start_byte, last_byte = self._get_block_bytes_range(start_block)
             if start_block not in self.read_blocks:
                 self.read_blocks.add(start_block)
-            initial_read_items = ((start_block + 1) * self.n_per_block) - start
+            second_block_start = (start_block + 1) * self.n_per_block
+            initial_read_items = second_block_start - start
             if nitems > initial_read_items:
                 remaining_nitems = nitems - initial_read_items
                 remaining_blocks = int(np.ceil(remaining_nitems / self.n_per_block))
-                last_block = start_block+1+remaining_blocks
+                last_block = min(start_block+1+remaining_blocks, self.nblocks-1)
                 _, last_block_end = self._get_block_bytes_range(last_block)
                 last_byte = last_block_end
                 # start_block has already been read so we start from the next one
