@@ -553,13 +553,35 @@ def disjoint_intervals(intervals):
     else:
         return disj_interv
 
+def combine_disjoint_intervals(intervals, min_distance):
+    if min_distance == 0:
+        return intervals
+    intervals.sort(key=lambda interv: interv[0])
+    target_intervals = []
+    current_ix = 0
+    current_start, current_end = intervals[0]
+    while current_ix<len(intervals):
+        if current_ix<len(intervals)-1:
+            next_start, next_end = intervals[current_ix+1]
+        else:
+            next_start, next_end = None, None
+
+        if next_start is not None and next_start - current_end < min_distance:
+            current_end = next_end
+        else:
+            target_intervals.append((current_start, current_end))
+            current_start = next_start
+            current_end = next_end
+        current_ix += 1
+    return target_intervals
+
 nolock = NoLock()
 
 class PartialChunkReadError(Exception):
     pass
 
 class PartialReadBuffer:
-    def __init__(self, store_key, chunk_store, readahead_nblocks=4096):
+    def __init__(self, store_key, chunk_store, readahead_nblocks=4096, min_distance_between_blocks_percentage=10.0):
         self.chunk_store = chunk_store
         self.fs = self.chunk_store.fs
         self.store_key = store_key
@@ -575,6 +597,7 @@ class PartialReadBuffer:
         self.n_per_block = None
         self.start_points_max = None
         self.readahead_nblocks = readahead_nblocks
+        self.min_distance_between_blocks_percentage = min_distance_between_blocks_percentage
         self.read_blocks = set()
 
     def prepare_chunk(self):
@@ -646,8 +669,14 @@ class PartialReadBuffer:
                 self.read_blocks |= set(range(start_block+1, last_block+1))
             required_ranges.append((start_byte, last_byte))
 
+        if self.min_distance_between_blocks_percentage is not None:
+            min_interblock_distance_bytes = int(self.cbytes*self.min_distance_between_blocks_percentage/100.0)
+        else:
+            min_interblock_distance_bytes = 0
+
         disjoint_ranges = disjoint_intervals(required_ranges)
-        for start_byte, stop_byte in disjoint_ranges:
+        combined_ranges = combine_disjoint_intervals(disjoint_ranges, min_distance=min_interblock_distance_bytes)
+        for start_byte, stop_byte in combined_ranges:
             length = stop_byte - start_byte
             print(f"Read {self.key_path} range: from {start_byte} to {stop_byte}, len {length}: {np.round(length/self.cbytes*100, 2)}%")
             data_buff = self.fs.read_block(self.key_path, start_byte, length)
