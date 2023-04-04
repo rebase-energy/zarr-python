@@ -9,7 +9,7 @@ from zarr.util import (guess_chunks, human_readable_size, info_html_report,
                        normalize_fill_value, normalize_order,
                        normalize_resize_args, normalize_shape, retry_call,
                        tree_array_icon, tree_group_icon, tree_get_icon,
-                       tree_widget)
+                       tree_widget, combine_disjoint_intervals)
 
 
 def test_normalize_shape():
@@ -202,3 +202,9 @@ def test_retry_call():
 
     for x in range(11, 15):
         pytest.raises(PermissionError, fail, x)
+
+
+def test_combine_disjoint_intervals():
+    intervals = [(4, 7), (22, 26), (29, 50), (70, 85), (86, 100), (200, 300)]
+    result = combine_disjoint_intervals(intervals, min_distance=10)
+    assert result == [(4, 7), (22, 50), (70, 100), (200, 300)]
