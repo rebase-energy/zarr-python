@@ -581,7 +581,7 @@ class PartialChunkReadError(Exception):
     pass
 
 class PartialReadBuffer:
-    def __init__(self, store_key, chunk_store, readahead_nblocks=4096, min_distance_between_blocks_percentage=10.0):
+    def __init__(self, store_key, chunk_store, readahead_nblocks=4096, min_distance_between_blocks_percentage=0.0):
         self.chunk_store = chunk_store
         self.fs = self.chunk_store.fs
         self.store_key = store_key
