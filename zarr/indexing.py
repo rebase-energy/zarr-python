@@ -857,9 +857,9 @@ def make_slice_selections(selection):
 
     selections = []
     if len(arrs) > 0:
-        broadcasted_arrs = np.broadcast_arrays(*arrs)
-        arr_vals = zip(*[ar for _, ar in broadcasted_arrs])
-        dim_indices = [dim_ix for dim_ix, _ in broadcasted_arrs]
+        broadcasted_arrs = np.broadcast_arrays(*[ar for _, ar in arrs])
+        arr_vals = zip(*broadcasted_arrs)
+        dim_indices = [dim_ix for dim_ix, _ in arrs]
         for arr_inst in arr_vals:
             selection = ls.copy()
             for dim_ix, arr_value in zip(dim_indices, arr_inst):
