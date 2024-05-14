@@ -862,7 +862,8 @@ def make_slice_selections(selection):
         dim_indices = [dim_ix for dim_ix, _ in arrs]
         for arr_inst in arr_vals:
             selection = ls.copy()
-            for dim_ix, arr_value in zip(dim_indices, arr_inst):
+            for dim_ix, arr_value_array in zip(dim_indices, arr_inst):
+                arr_value = np.asarray(arr_value_array).flatten()[0]
                 selection[dim_ix] = slice(arr_value, arr_value + 1, 1)
             selections.append(selection)
     else:
