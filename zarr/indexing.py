@@ -829,14 +829,16 @@ def pop_fields(selection):
     return fields, selection
 
 
-def make_slice_selection(selection):
+def make_slice_selections(selection):
     ls = []
+    arrs = []
     for dim_ix, dim_selection in enumerate(selection):
         if is_integer(dim_selection):
             ls.append(slice(dim_selection, dim_selection + 1, 1))
         elif isinstance(dim_selection, np.ndarray) or isinstance(dim_selection, list):
             if isinstance(dim_selection, list):
                 dim_selection = np.asanyarray(dim_selection, dtype=np.integer)
+
             dim_selection_flat = dim_selection.flatten()
             if len(dim_selection_flat) > 1:
                 if all(dim_selection_flat == dim_selection_flat[0]):
@@ -844,14 +846,28 @@ def make_slice_selection(selection):
                 elif all(np.diff(dim_selection_flat) == 1):
                     ls.append(slice(dim_selection_flat[0], dim_selection_flat[-1] + 1, 1))
                 else:
-                    ls.append(slice(min(dim_selection_flat), max(dim_selection_flat) + 1, 1))
+                    arrs.append((dim_ix, dim_selection))
+                    ls.append(None)
             elif len(dim_selection_flat) == 1:
                 ls.append(slice(dim_selection_flat[0], dim_selection_flat[0] + 1, 1))
             else:
                 raise ArrayIndexError()
         else:
             ls.append(dim_selection)
-    return ls
+
+    selections = []
+    if len(arrs) > 0:
+        broadcasted_arrs = np.broadcast_arrays(*arrs)
+        arr_vals = zip(*[ar for _, ar in broadcasted_arrs])
+        dim_indices = [dim_ix for dim_ix, _ in broadcasted_arrs]
+        for arr_inst in arr_vals:
+            selection = ls.copy()
+            for dim_ix, arr_value in zip(dim_indices, arr_inst):
+                selection[dim_ix] = slice(arr_value, arr_value + 1, 1)
+            selections.append(selection)
+    else:
+        selections.append(ls)
+    return selections
 
 
 class PartialChunkIterator(object):
@@ -896,57 +912,63 @@ class PartialChunkIterator(object):
     """
 
     def __init__(self, selection, arr_shape):
-        selection = make_slice_selection(selection)
+        selections = make_slice_selections(selection)
         self.arr_shape = arr_shape
 
-        # number of selection dimensions can't be greater than the number of chunk dimensions
-        if len(selection) > len(self.arr_shape):
-            raise ValueError(
-                "Selection has more dimensions then the array:\n"
-                f"selection dimensions = {len(selection)}\n"
-                f"array dimensions = {len(self.arr_shape)}"
-            )
+        self.all_chunk_loc_slices = []
+        for selection in selections:
+            # number of selection dimensions can't be greater than the number of chunk dimensions
+            if len(selection) > len(self.arr_shape):
+                raise ValueError(
+                    "Selection has more dimensions then the array:\n"
+                    f"selection dimensions = {len(selection)}\n"
+                    f"array dimensions = {len(self.arr_shape)}"
+                )
 
-        # any selection can not be out of the range of the chunk
-        selection_shape = np.empty(self.arr_shape)[tuple(selection)].shape
-        if any(
-            [
-                selection_dim < 0 or selection_dim > arr_dim
-                for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
-            ]
-        ):
-            raise IndexError(
-                "a selection index is out of range for the dimension"
-            )  # pragma: no cover
+            # any selection can not be out of the range of the chunk
+            selection_shape = np.empty(self.arr_shape)[tuple(selection)].shape
+            if any(
+                [
+                    selection_dim < 0 or selection_dim > arr_dim
+                    for selection_dim, arr_dim in zip(selection_shape, self.arr_shape)
+                ]
+            ):
+                raise IndexError(
+                    "a selection index is out of range for the dimension"
+                )  # pragma: no cover
 
-        for i, dim_size in enumerate(self.arr_shape[::-1]):
-            index = len(self.arr_shape) - (i + 1)
-            if index <= len(selection) - 1:
-                slice_size = selection_shape[index]
-                if slice_size == dim_size and index > 0:
-                    selection.pop()
-                else:
-                    break
+            for i, dim_size in enumerate(self.arr_shape[::-1]):
+                index = len(self.arr_shape) - (i + 1)
+                if index <= len(selection) - 1:
+                    slice_size = selection_shape[index]
+                    if slice_size == dim_size and index > 0:
+                        selection.pop()
+                    else:
+                        break
 
-        chunk_loc_slices = []
-        last_dim_slice = None if selection[-1].step > 1 else selection.pop()
-        for arr_shape_i, sl in zip(arr_shape, selection):
-            dim_chunk_loc_slices = []
-            assert isinstance(sl, slice)
-            for x in slice_to_range(sl, arr_shape_i):
-                dim_chunk_loc_slices.append(slice(x, x + 1, 1))
-            chunk_loc_slices.append(dim_chunk_loc_slices)
-        if last_dim_slice:
-            chunk_loc_slices.append([last_dim_slice])
-        self.chunk_loc_slices = list(itertools.product(*chunk_loc_slices))
+            chunk_loc_slices = []
+
+            last_dim_slice = None if selection[-1].step > 1 else selection.pop()
+            for arr_shape_i, sl in zip(arr_shape, selection):
+                dim_chunk_loc_slices = []
+                assert isinstance(sl, slice)
+                for x in slice_to_range(sl, arr_shape_i):
+                    dim_chunk_loc_slices.append(slice(x, x + 1, 1))
+                chunk_loc_slices.append(dim_chunk_loc_slices)
+            if last_dim_slice:
+                chunk_loc_slices.append([last_dim_slice])
+
+            chunk_loc_slices = list(itertools.product(*chunk_loc_slices))
+            self.all_chunk_loc_slices.append(chunk_loc_slices)
 
     def __iter__(self):
-        chunk1 = self.chunk_loc_slices[0]
-        nitems = (chunk1[-1].stop - chunk1[-1].start) * np.prod(
-            self.arr_shape[len(chunk1):], dtype=int
-        )
-        for partial_out_selection in self.chunk_loc_slices:
-            start = 0
-            for i, sl in enumerate(partial_out_selection):
-                start += sl.start * np.prod(self.arr_shape[i + 1:], dtype=int)
-            yield start, nitems, partial_out_selection
+        for chunk_loc_slices in self.all_chunk_loc_slices:
+            chunk1 = chunk_loc_slices[0]
+            nitems = (chunk1[-1].stop - chunk1[-1].start) * np.prod(
+                self.arr_shape[len(chunk1):], dtype=int
+            )
+            for partial_out_selection in chunk_loc_slices:
+                start = 0
+                for i, sl in enumerate(partial_out_selection):
+                    start += sl.start * np.prod(self.arr_shape[i + 1:], dtype=int)
+                yield start, nitems, partial_out_selection

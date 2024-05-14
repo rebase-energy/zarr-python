@@ -678,7 +678,7 @@ class PartialReadBuffer:
         combined_ranges = combine_disjoint_intervals(disjoint_ranges, min_distance=min_interblock_distance_bytes)
         for start_byte, stop_byte in combined_ranges:
             length = stop_byte - start_byte
-            print(f"Read {self.key_path} range: from {start_byte} to {stop_byte}, len {length}: {np.round(length/self.cbytes*100, 2)}%")
+            print(f"Read {self.key_path} range: from {start_byte} to {stop_byte}, len {length}: {np.round(length/self.cbytes*100, 2)}%  (ranges: {len(required_ranges)} -> {len(disjoint_ranges)})")
             data_buff = self.fs.read_block(self.key_path, start_byte, length)
             self.buff[start_byte:stop_byte] = data_buff
 
