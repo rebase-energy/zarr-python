@@ -858,7 +858,7 @@ def make_slice_selections(selection):
     selections = []
     if len(arrs) > 0:
         broadcasted_arrs = np.broadcast_arrays(*[ar for _, ar in arrs])
-        arr_vals = zip(*broadcasted_arrs)
+        arr_vals = list(zip(*[arr.flatten() for arr in broadcasted_arrs]))
         dim_indices = [dim_ix for dim_ix, _ in arrs]
         for arr_inst in arr_vals:
             selection = ls.copy()
@@ -917,17 +917,17 @@ class PartialChunkIterator(object):
         self.arr_shape = arr_shape
 
         self.all_chunk_loc_slices = []
-        for selection in selections:
+        for current_selection in selections:
             # number of selection dimensions can't be greater than the number of chunk dimensions
-            if len(selection) > len(self.arr_shape):
+            if len(current_selection) > len(self.arr_shape):
                 raise ValueError(
                     "Selection has more dimensions then the array:\n"
-                    f"selection dimensions = {len(selection)}\n"
+                    f"selection dimensions = {len(current_selection)}\n"
                     f"array dimensions = {len(self.arr_shape)}"
                 )
 
             # any selection can not be out of the range of the chunk
-            selection_shape = np.empty(self.arr_shape)[tuple(selection)].shape
+            selection_shape = np.empty(self.arr_shape)[tuple(current_selection)].shape
             if any(
                 [
                     selection_dim < 0 or selection_dim > arr_dim
@@ -940,17 +940,17 @@ class PartialChunkIterator(object):
 
             for i, dim_size in enumerate(self.arr_shape[::-1]):
                 index = len(self.arr_shape) - (i + 1)
-                if index <= len(selection) - 1:
+                if index <= len(current_selection) - 1:
                     slice_size = selection_shape[index]
                     if slice_size == dim_size and index > 0:
-                        selection.pop()
+                        current_selection.pop()
                     else:
                         break
 
             chunk_loc_slices = []
 
-            last_dim_slice = None if selection[-1].step > 1 else selection.pop()
-            for arr_shape_i, sl in zip(arr_shape, selection):
+            last_dim_slice = None if current_selection[-1].step > 1 else current_selection.pop()
+            for arr_shape_i, sl in zip(arr_shape, current_selection):
                 dim_chunk_loc_slices = []
                 assert isinstance(sl, slice)
                 for x in slice_to_range(sl, arr_shape_i):
