@@ -535,23 +535,34 @@ class NoLock(object):
     def __exit__(self, *args):
         pass
 
-def disjoint_intervals(intervals):
-    if len(intervals) == 1:
-        return intervals
-    disj_interv = []
-    for interv in intervals:
-        i_start, i_end = interv
-        intersected_interval = False
-        for dj_ix, (dj_start, dj_end) in enumerate(disj_interv):
-            if i_start<=dj_end and dj_start<=i_end:
-                disj_interv[dj_ix] = [min(i_start, dj_start), max(i_end, dj_end)]
-                intersected_interval = True
-        if not intersected_interval:
-            disj_interv.append(interv)
-    if len(disj_interv) < len(intervals):
-        return disjoint_intervals(disj_interv)
-    else:
-        return disj_interv
+def disjoint_intervals(arr):
+    # reference: https://www.geeksforgeeks.org/merging-intervals/
+
+    arr = arr.copy()
+    if len(arr) == 1:
+        return arr
+    # Sorting based on the increasing order
+    # of the start intervals
+    arr.sort(key=lambda x: x[0])
+
+    # Stores index of last element
+    # in output array (modified arr[])
+    index = 0
+
+    # Traverse all input Intervals starting from
+    # second interval
+    for i in range(1, len(arr)):
+
+        # If this is not first Interval and overlaps
+        # with the previous one, Merge previous and
+        # current Intervals
+        if (arr[index][1] >= arr[i][0]):
+            arr[index][1] = max(arr[index][1], arr[i][1])
+        else:
+            index = index + 1
+            arr[index] = arr[i]
+
+    return arr[:index+1]
 
 def combine_disjoint_intervals(intervals, min_distance):
     if min_distance == 0:
@@ -569,7 +580,7 @@ def combine_disjoint_intervals(intervals, min_distance):
         if next_start is not None and next_start - current_end < min_distance:
             current_end = next_end
         else:
-            target_intervals.append((current_start, current_end))
+            target_intervals.append([current_start, current_end])
             current_start = next_start
             current_end = next_end
         current_ix += 1
@@ -667,7 +678,7 @@ class PartialReadBuffer:
                 last_byte = last_block_end
                 # start_block has already been read so we start from the next one
                 self.read_blocks |= set(range(start_block+1, last_block+1))
-            required_ranges.append((start_byte, last_byte))
+            required_ranges.append([start_byte, last_byte])
 
         if self.min_distance_between_blocks_percentage is not None:
             min_interblock_distance_bytes = int(self.cbytes*self.min_distance_between_blocks_percentage/100.0)
