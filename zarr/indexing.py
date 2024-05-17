@@ -846,8 +846,9 @@ def make_slice_selections(selection):
                 elif all(np.diff(dim_selection_flat) == 1):
                     ls.append(slice(dim_selection_flat[0], dim_selection_flat[-1] + 1, 1))
                 else:
-                    arrs.append((dim_ix, dim_selection))
-                    ls.append(None)
+                    ls.append(slice(min(dim_selection_flat), max(dim_selection_flat) + 1, 1))
+                    # arrs.append((dim_ix, dim_selection))
+                    # ls.append(None)
             elif len(dim_selection_flat) == 1:
                 ls.append(slice(dim_selection_flat[0], dim_selection_flat[0] + 1, 1))
             else:
