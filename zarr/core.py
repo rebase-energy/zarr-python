@@ -5,6 +5,7 @@ import math
 import operator
 import re
 from functools import reduce
+from datetime import datetime
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -1722,13 +1723,47 @@ class Array:
                 tmp = np.empty(self._chunks, dtype=self.dtype)
                 index_selection = PartialChunkIterator(chunk_selection, self.chunks)
 
+                ts_start = datetime.now()
                 start_arr = []
                 nitems_arr = []
                 for start, nitems, _ in index_selection:
                     start_arr.append(start)
                     nitems_arr.append(nitems)
                 cdata.read_parts(start_arr, nitems_arr)
+                read_chunks_ts = datetime.now()-ts_start
 
+                ts_start = datetime.now()
+                blocks = sorted(list(cdata.read_blocks))
+                total_decoded_items = np.empty(len(blocks) * int(cdata.n_per_block), dtype=self.dtype)
+                current_position = 0
+                current_region = []
+                block_index = 0
+                regions_lengths = []
+                while True:
+                    if block_index < len(blocks):
+                        block_number = blocks[block_index]
+                    else:
+                        block_number = None
+                    if block_index < len(blocks) and (len(current_region) == 0 or block_number - current_region[-1] == 1):
+                        current_region.append(block_number)
+                    else:
+                        regions_lengths.append(len(current_region))
+                        first_block_start = current_region[0] * int(cdata.n_per_block)
+                        total_read_items = min(int(cdata.n_per_block) * len(current_region), cdata.n_max_nitems-first_block_start)
+                        total_decoded_items[current_position:current_position+total_read_items] = self._decode_chunk(cdata.buff,
+                                start=first_block_start,
+                                nitems=total_read_items,
+                                expected_shape=(total_read_items),
+                            )
+                        current_position += total_read_items
+                        if block_index == len(blocks):
+                            break
+                        else:
+                            current_region = [block_number]
+                    block_index += 1
+                chunks_decompress_ts = datetime.now()-ts_start
+
+                ts_start = datetime.now()
                 for start, nitems, partial_out_selection in index_selection:
                     expected_shape = [
                         len(
@@ -1738,14 +1773,16 @@ class Array:
                         else dim
                         for i, dim in enumerate(self.chunks)
                     ]
-                    chunk_partial = self._decode_chunk(
-                        cdata.buff,
-                        start=start,
-                        nitems=nitems,
-                        expected_shape=expected_shape,
-                    )
-                    tmp[partial_out_selection] = chunk_partial
+                    current_start_block = start // cdata.n_per_block
+                    current_start_block_index = blocks.index(current_start_block)
+                    current_slice_start = current_start_block_index * cdata.n_per_block + start % cdata.n_per_block
+                    current_slice_end = current_slice_start + nitems
+                    tmp[partial_out_selection] = total_decoded_items[int(current_slice_start):int(current_slice_end)].reshape(expected_shape)
+
                 out[out_selection] = tmp[chunk_selection]
+                chunks_assignment_ts = datetime.now()-ts_start
+
+                print(f"Zarr: decompressing partial: region lengths: {regions_lengths} times: read: {read_chunks_ts}, decompress: {chunks_decompress_ts}, assignment: {chunks_assignment_ts}")
                 return
         except (ArrayIndexError, PartialChunkReadError):
             cdata = cdata.read_full()
