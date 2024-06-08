@@ -6,6 +6,7 @@ from textwrap import TextWrapper
 import mmap
 import time
 import warnings
+import logging
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
@@ -616,7 +617,7 @@ class PartialReadBuffer:
             start_points_buffer = self.fs.read_block(
                 self.key_path, 16, nblocks_pointers_totalsize
             )
-        print(f"prepare_chunk: {self.key_path}: {(nbytes, self.cbytes, blocksize)}, start_points_buffer: {len(start_points_buffer)}")
+        logging.info(f"prepare_chunk: {self.key_path}: {(nbytes, self.cbytes, blocksize)}, start_points_buffer: {len(start_points_buffer)}")
         self.start_points = np.frombuffer(
             start_points_buffer, count=self.nblocks, dtype=np.int32
         )
@@ -661,7 +662,7 @@ class PartialReadBuffer:
         disjoint_ranges = disjoint_intervals(required_ranges)
         for start_byte, stop_byte in disjoint_ranges:
             length = stop_byte - start_byte
-            print(f"Read {self.key_path} range: from {start_byte} to {stop_byte}, len {length}: {np.round(length/self.cbytes*100, 2)}%  (ranges: {len(required_ranges)} -> {len(disjoint_ranges)})")
+            logging.info(f"Read {self.key_path} range: from {start_byte} to {stop_byte}, len {length}: {np.round(length/self.cbytes*100, 2)}%  (ranges: {len(required_ranges)} -> {len(disjoint_ranges)})")
             data_buff = self.fs.read_block(self.key_path, start_byte, length)
             self.buff[start_byte:stop_byte] = data_buff
 
@@ -686,7 +687,7 @@ class PartialReadBuffer:
                 else:
                     stop_byte = self.start_points[self.start_points > start_byte].min()
                 length = stop_byte - start_byte
-                print(f"Need {nitems} from {start}: read {self.key_path}: from {start_byte}, for {length}")
+                logging.info(f"Need {nitems} from {start}: read {self.key_path}: from {start_byte}, for {length}")
                 data_buff = self.fs.read_block(self.key_path, start_byte, length)
                 self.buff[start_byte:stop_byte] = data_buff
                 self.read_blocks.add(start_block)

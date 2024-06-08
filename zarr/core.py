@@ -6,6 +6,7 @@ import operator
 import re
 from functools import reduce
 from datetime import datetime
+import logging
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -1782,7 +1783,7 @@ class Array:
                 out[out_selection] = tmp[chunk_selection]
                 chunks_assignment_ts = datetime.now()-ts_start
 
-                print(f"Zarr: decompressing partial: region lengths: {regions_lengths} times: read: {read_chunks_ts}, decompress: {chunks_decompress_ts}, assignment: {chunks_assignment_ts}")
+                logging.info(f"Zarr: decompressing partial: region lengths: {regions_lengths} times: read: {read_chunks_ts}, decompress: {chunks_decompress_ts}, assignment: {chunks_assignment_ts}")
                 return
         except (ArrayIndexError, PartialChunkReadError):
             cdata = cdata.read_full()
