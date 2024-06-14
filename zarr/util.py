@@ -607,9 +607,6 @@ class PartialReadBuffer:
             if self.nblocks == int(self.nblocks)
             else int(self.nblocks + 1)
         )
-        if self.nblocks == 1:
-            self.buff = self.read_full()
-            return
         nblocks_pointers_totalsize = int(self.nblocks * 4)
         if readahead_buff is not None and len(readahead_buff)>=16+nblocks_pointers_totalsize:
             start_points_buffer = readahead_buff[16:16+nblocks_pointers_totalsize]
@@ -639,8 +636,6 @@ class PartialReadBuffer:
 
     def read_parts(self, start_arr, nitems_arr):
         assert self.buff is not None
-        if self.nblocks == 1:
-            return
         required_ranges = []
         for start, nitems in zip(start_arr, nitems_arr):
             start_block = int(start / self.n_per_block)
