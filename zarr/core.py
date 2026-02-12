@@ -1719,66 +1719,69 @@ class Array:
         # decode chunk
         try:
             if partial_read_decode:
-                cdata.prepare_chunk()
-                # size of chunk
-                tmp = np.empty(self._chunks, dtype=self.dtype)
-                index_selection = PartialChunkIterator(chunk_selection, self.chunks)
+                try:
+                    cdata.prepare_chunk()
+                    # size of chunk
+                    tmp = np.empty(self._chunks, dtype=self.dtype)
+                    index_selection = PartialChunkIterator(chunk_selection, self.chunks)
 
-                ts_start = datetime.now()
-                start_arr = []
-                nitems_arr = []
-                for start, nitems, _ in index_selection:
-                    start_arr.append(start)
-                    nitems_arr.append(nitems)
-                cdata.read_parts(start_arr, nitems_arr)
-                read_chunks_ts = datetime.now()-ts_start
+                    ts_start = datetime.now()
+                    start_arr = []
+                    nitems_arr = []
+                    for start, nitems, _ in index_selection:
+                        start_arr.append(start)
+                        nitems_arr.append(nitems)
+                    cdata.read_parts(start_arr, nitems_arr)
+                    read_chunks_ts = datetime.now()-ts_start
 
-                ts_start = datetime.now()
-                blocks = sorted(list(cdata.read_blocks))
-                total_decoded_items = np.empty(len(blocks) * int(cdata.n_per_block), dtype=self.dtype)
-                current_position = 0
-                current_region = []
-                block_index = 0
-                regions_lengths = []
-                while True:
-                    if block_index < len(blocks):
-                        block_number = blocks[block_index]
-                    else:
-                        block_number = None
-                    if block_index < len(blocks) and (len(current_region) == 0 or block_number - current_region[-1] == 1):
-                        current_region.append(block_number)
-                    else:
-                        regions_lengths.append(len(current_region))
-                        first_block_start = current_region[0] * int(cdata.n_per_block)
-                        total_read_items = min(int(cdata.n_per_block) * len(current_region), cdata.n_max_nitems-first_block_start)
-                        total_decoded_items[current_position:current_position+total_read_items] = self._decode_chunk(cdata.buff,
-                                start=first_block_start,
-                                nitems=total_read_items,
-                                expected_shape=(total_read_items),
-                            )
-                        current_position += total_read_items
-                        if block_index == len(blocks):
-                            break
+                    ts_start = datetime.now()
+                    blocks = sorted(list(cdata.read_blocks))
+                    total_decoded_items = np.empty(len(blocks) * int(cdata.n_per_block), dtype=self.dtype)
+                    current_position = 0
+                    current_region = []
+                    block_index = 0
+                    regions_lengths = []
+                    while True:
+                        if block_index < len(blocks):
+                            block_number = blocks[block_index]
                         else:
-                            current_region = [block_number]
-                    block_index += 1
-                chunks_decompress_ts = datetime.now()-ts_start
+                            block_number = None
+                        if block_index < len(blocks) and (len(current_region) == 0 or block_number - current_region[-1] == 1):
+                            current_region.append(block_number)
+                        else:
+                            regions_lengths.append(len(current_region))
+                            first_block_start = current_region[0] * int(cdata.n_per_block)
+                            total_read_items = min(int(cdata.n_per_block) * len(current_region), cdata.n_max_nitems-first_block_start)
+                            total_decoded_items[current_position:current_position+total_read_items] = self._decode_chunk(cdata.buff,
+                                    start=first_block_start,
+                                    nitems=total_read_items,
+                                    expected_shape=(total_read_items),
+                                )
+                            current_position += total_read_items
+                            if block_index == len(blocks):
+                                break
+                            else:
+                                current_region = [block_number]
+                        block_index += 1
+                    chunks_decompress_ts = datetime.now()-ts_start
 
-                ts_start = datetime.now()
-                for start, nitems, partial_out_selection in index_selection:
-                    expected_shape = [
-                        len(
-                            range(*partial_out_selection[i].indices(self.chunks[i] + 1))
-                        )
-                        if i < len(partial_out_selection)
-                        else dim
-                        for i, dim in enumerate(self.chunks)
-                    ]
-                    current_start_block = start // cdata.n_per_block
-                    current_start_block_index = blocks.index(current_start_block)
-                    current_slice_start = current_start_block_index * cdata.n_per_block + start % cdata.n_per_block
-                    current_slice_end = current_slice_start + nitems
-                    tmp[partial_out_selection] = total_decoded_items[int(current_slice_start):int(current_slice_end)].reshape(expected_shape)
+                    ts_start = datetime.now()
+                    for start, nitems, partial_out_selection in index_selection:
+                        expected_shape = [
+                            len(
+                                range(*partial_out_selection[i].indices(self.chunks[i] + 1))
+                            )
+                            if i < len(partial_out_selection)
+                            else dim
+                            for i, dim in enumerate(self.chunks)
+                        ]
+                        current_start_block = start // cdata.n_per_block
+                        current_start_block_index = blocks.index(current_start_block)
+                        current_slice_start = current_start_block_index * cdata.n_per_block + start % cdata.n_per_block
+                        current_slice_end = current_slice_start + nitems
+                        tmp[partial_out_selection] = total_decoded_items[int(current_slice_start):int(current_slice_end)].reshape(expected_shape)
+                except FileNotFoundError:
+                    raise PartialChunkReadError()
 
                 out[out_selection] = tmp[chunk_selection]
                 chunks_assignment_ts = datetime.now()-ts_start
